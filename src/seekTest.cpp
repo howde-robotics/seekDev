@@ -1,10 +1,12 @@
 #include <stdio.h>
+#include <signal.h>
 
 #include <memory>
 #include <vector>
 #include <stdexcept>
 #include <string>
 #include <iostream>
+#include <limits>
 
 #include <seekware.h>
 #include <opencv2/opencv.hpp>
@@ -42,24 +44,9 @@ static inline void print_fw_info(psw camera)
     fflush(stdout);
 }
 
-void freeResources(sw* camera, float* thermData, unsigned short* filteredData) {
-	if (thermData != NULL) {
-		std::cout << "Freeing therm" << std::endl;
-		free(thermData);
-	}
-
-	if (filteredData != NULL){
-		std::cout << "Freeing filter" << std::endl;
-		free(filteredData);
-	}
-}
-
-void processReturnCode(sw_retcode returnError, std::string context,
-	 sw* camera = NULL, float* thermData = NULL, unsigned short* filteredData = NULL) {
+void processReturnCode(sw_retcode returnError, std::string context) {
 
 	if (returnError != SW_RETCODE_NONE) {
-		freeResources(camera, thermData, filteredData);
-
 		std::ostringstream errStringStream;
 		errStringStream << "Seek Failed in context: " << context
 		 << " \n\tReturn Code: " <<  returnError;
@@ -76,8 +63,38 @@ void closeCamera(sw* camera) {
 	}
 }
 
+void printType(cv::Mat &mat) {
+         if(mat.depth() == CV_8U)  printf("unsigned char(%d)", mat.channels());
+    else if(mat.depth() == CV_8S)  printf("signed char(%d)", mat.channels());
+    else if(mat.depth() == CV_16U) printf("unsigned short(%d)", mat.channels());
+    else if(mat.depth() == CV_16S) printf("signed short(%d)", mat.channels());
+    else if(mat.depth() == CV_32S) printf("signed int(%d)", mat.channels());
+    else if(mat.depth() == CV_32F) printf("float(%d)", mat.channels());
+    else if(mat.depth() == CV_64F) printf("double(%d)", mat.channels());
+    else                           printf("unknown(%d)", mat.channels());
+}
+
+
+void printInfo(cv::Mat &mat) {
+    printf("dim(%d, %d)", mat.rows, mat.cols);
+    printType(mat);
+    printf("\n");
+}
+
+
+bool exit_requested = false;
+static void signal_callback(int signum)
+{
+    printf("Exit requested!\n");
+    exit_requested = true;
+}
+
+
 int main(int argc, char * argv [])
 {
+	signal(SIGINT, signal_callback);
+	signal(SIGTERM, signal_callback);
+
 	int numCamsToFind = 1;
 	sw_retcode returnError;//error code returned by all seek functions
 
@@ -98,7 +115,7 @@ int main(int argc, char * argv [])
 	std::unique_ptr<sw, decltype(&closeCamera)> camera(cameraList[0], &closeCamera);
 
 	returnError = Seekware_Open(camera.get());
-	processReturnCode(returnError, "Opening Camera", camera.get());
+	processReturnCode(returnError, "Opening Camera");
 
 	printf("::Camera Firmware Info::\n");
 	print_fw_info(camera.get());
@@ -109,10 +126,40 @@ int main(int argc, char * argv [])
 	int totalNumPixels = camera->frame_rows * camera->frame_cols;
 
 	std::vector<float> thermographyData(totalNumPixels);
-	std::vector<unsigned short> filteredData(totalNumPixels);
+	// std::vector<unsigned short> filteredData(totalNumPixels);
+	uint16_t* filteredData = (uint16_t*)malloc((totalNumPixels) * sizeof(uint16_t));
+	//extra row stores camera telemetry data 
+	std::vector<unsigned short> filteredWithTelemetryData(totalNumPixels + camera->frame_cols);
 
-	// Seekware_SetSettingEx(camera.get(), SETTING_ENABLE_TIMESTAMP, &enable, sizeof(enable));
-	// Seekware_SetSettingEx(camera.get(), SETTING_RESET_TIMESTAMP, &enable, sizeof(enable));
+	std::vector<unsigned int> displayData(totalNumPixels);
+
+	int enable = 1;
+	Seekware_SetSettingEx(camera.get(), SETTING_ENABLE_TIMESTAMP, &enable, sizeof(enable));
+	Seekware_SetSettingEx(camera.get(), SETTING_RESET_TIMESTAMP, &enable, sizeof(enable));
+
+	//Need to mix channels 
+	cv::Mat dispARGB(camera->frame_rows, camera->frame_cols,
+				CV_8UC4, displayData.data());
+
+	cv::Mat dispBGRA(camera->frame_rows, camera->frame_cols,
+				CV_8UC4);
+	int from_to[]={0,3, 1,2, 2,1, 3,0};
+	
+	cv::mixChannels(&dispARGB, 1, &dispBGRA, 1,  from_to, 4);
+
+	do {
+		returnError = Seekware_GetImage(camera.get(), 
+									filteredData, 
+									thermographyData.data(), 
+									displayData.data());
+		processReturnCode(returnError, "Getting Image from Camera");
+
+
+		cv::imshow("Display Window", dispARGB);
+		cvWaitKey(30);
+
+	} while(!exit_requested);
+
 
 	return 0;
 }
