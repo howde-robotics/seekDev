@@ -11,39 +11,6 @@
 #include <seekware.h>
 #include <opencv2/opencv.hpp>
 
-static inline void print_fw_info(psw camera)
-{
-    sw_retcode status; 
-    int therm_ver;
-
-    printf("Model Number:%s\n",camera->modelNumber);
-    printf("SerialNumber: %s\n", camera->serialNumber);
-    printf("Manufacture Date: %s\n", camera->manufactureDate);
-
-    printf("Firmware Version: %u.%u.%u.%u\n",
-            camera->fw_version_major,
-			camera->fw_version_minor,
-            camera->fw_build_major,
-			camera->fw_build_minor);
-
-	status = Seekware_GetSettingEx(camera, SETTING_THERMOGRAPHY_VERSION, &therm_ver, sizeof(therm_ver));
-	if (status != SW_RETCODE_NONE) {
-		fprintf(stderr, "Error: Seek GetSetting returned %i\n", status);
-	}
-    printf("Themography Version: %i\n", therm_ver);
-
-	sw_sdk_info sdk_info;
-	Seekware_GetSdkInfo(NULL, &sdk_info);
-	printf("Image Processing Version: %u.%u.%u.%u\n",
-		sdk_info.lib_version_major,
-		sdk_info.lib_version_minor,
-		sdk_info.lib_build_major,
-		sdk_info.lib_build_minor);
-
-	printf("\n");
-    fflush(stdout);
-}
-
 void processReturnCode(sw_retcode returnError, std::string context) {
 
 	if (returnError != SW_RETCODE_NONE) {
@@ -61,24 +28,6 @@ void closeCamera(sw* camera) {
 		std::cout << "Closing camera" << std::endl;
 		Seekware_Close(camera);
 	}
-}
-
-void printType(cv::Mat &mat) {
-         if(mat.depth() == CV_8U)  printf("unsigned char(%d)", mat.channels());
-    else if(mat.depth() == CV_8S)  printf("signed char(%d)", mat.channels());
-    else if(mat.depth() == CV_16U) printf("unsigned short(%d)", mat.channels());
-    else if(mat.depth() == CV_16S) printf("signed short(%d)", mat.channels());
-    else if(mat.depth() == CV_32S) printf("signed int(%d)", mat.channels());
-    else if(mat.depth() == CV_32F) printf("float(%d)", mat.channels());
-    else if(mat.depth() == CV_64F) printf("double(%d)", mat.channels());
-    else                           printf("unknown(%d)", mat.channels());
-}
-
-
-void printInfo(cv::Mat &mat) {
-    printf("dim(%d, %d)", mat.rows, mat.cols);
-    printType(mat);
-    printf("\n");
 }
 
 
@@ -117,9 +66,6 @@ int main(int argc, char * argv [])
 	returnError = Seekware_Open(camera.get());
 	processReturnCode(returnError, "Opening Camera");
 
-	printf("::Camera Firmware Info::\n");
-	print_fw_info(camera.get());
-
 	std::cout << "Camera row, cols: " << camera->frame_rows << ", " << 
 		camera->frame_cols << std::endl;
 
@@ -144,7 +90,7 @@ int main(int argc, char * argv [])
 	cv::Mat dispBGRA(camera->frame_rows, camera->frame_cols,
 				CV_8UC4);
 	int from_to[]={0,3, 1,2, 2,1, 3,0};
-	
+
 	cv::mixChannels(&dispARGB, 1, &dispBGRA, 1,  from_to, 4);
 
 	do {
@@ -156,7 +102,13 @@ int main(int argc, char * argv [])
 
 
 		cv::imshow("Display Window", dispARGB);
-		cvWaitKey(30);
+		auto k = cvWaitKey(30);
+		
+		if (k == 1048608) {
+			//space bar pressed
+			
+			//TODO: Save test image here
+		}
 
 	} while(!exit_requested);
 
