@@ -1,27 +1,13 @@
 #include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <time.h>
-#include <string.h>
-#include <signal.h>
-#include <math.h>
-#include <time.h>
-#include <sys/time.h>
+
+#include <memory>
+#include <vector>
+#include <stdexcept>
+#include <string>
+#include <iostream>
 
 #include <seekware.h>
-
-#define NUM_CAMS            	5
-#define LOG_THERMOGRAPHY_DATA	true
-
-bool exit_requested = false;
-
-static inline double wall_clock_s(void) {
-
-    struct timeval time;
-    gettimeofday(&time, NULL);
-    return (double)time.tv_sec + (double)time.tv_usec * .000001;
-}
+#include <opencv2/opencv.hpp>
 
 static inline void print_fw_info(psw camera)
 {
@@ -56,179 +42,77 @@ static inline void print_fw_info(psw camera)
     fflush(stdout);
 }
 
-static void signal_callback(int signum)
-{
-    printf("Exit requested!\n");
-    exit_requested = true;
+void freeResources(sw* camera, float* thermData, unsigned short* filteredData) {
+	if (thermData != NULL) {
+		std::cout << "Freeing therm" << std::endl;
+		free(thermData);
+	}
+
+	if (filteredData != NULL){
+		std::cout << "Freeing filter" << std::endl;
+		free(filteredData);
+	}
+}
+
+void processReturnCode(sw_retcode returnError, std::string context,
+	 sw* camera = NULL, float* thermData = NULL, unsigned short* filteredData = NULL) {
+
+	if (returnError != SW_RETCODE_NONE) {
+		freeResources(camera, thermData, filteredData);
+
+		std::ostringstream errStringStream;
+		errStringStream << "Seek Failed in context: " << context
+		 << " \n\tReturn Code: " <<  returnError;
+		throw std::runtime_error(errStringStream.str());
+	}
+	
+}
+
+//custom deleter to close camera when unique_ptr goes out of scope
+void closeCamera(sw* camera) {
+	if (camera != NULL) {
+		std::cout << "Closing camera" << std::endl;
+		Seekware_Close(camera);
+	}
 }
 
 int main(int argc, char * argv [])
 {
-	double start = 0.0f;
-	double stop = 0.0f;
-	double frametime = 0.0f;
-	double framerate = 0.0f;
-
-	float spot = 0;
-	float min = 0;
-	float max = 0;
-	float timestamp_s = 0.0f;
-
-	uint32_t field_count = 0;
-	uint32_t enable = 1;
-	uint64_t timestamp_us = 0;
-	uint64_t frame_count = 0;
-
-	size_t camera_pixels = 0;
-
-	sw_retcode status;
-	psw camera = NULL;
-	psw camera_list[NUM_CAMS];
-
-	float* thermography_data = NULL;
-	uint16_t* filtered_data = NULL;
-
-	signal(SIGINT, signal_callback);
-	signal(SIGTERM, signal_callback);
-
-	printf("seekware-simple - A simple data capture utility for Seek Thermal cameras\n\n");
+	int numCamsToFind = 1;
+	sw_retcode returnError;//error code returned by all seek functions
 
 	sw_sdk_info sdk_info;
 	Seekware_GetSdkInfo(NULL, &sdk_info);
 	printf("SDK Version: %u.%u\n\n", sdk_info.sdk_version_major, sdk_info.sdk_version_minor);
 
+	std::unique_ptr<sw*[]> cameraList(new sw*[numCamsToFind]);
 	int num_cameras_found = 0;
-	status = Seekware_Find(camera_list, NUM_CAMS, &num_cameras_found);
-	if (status != SW_RETCODE_NONE || num_cameras_found == 0) {
-		printf("Cannot find any cameras...exiting\n");
+
+	returnError = Seekware_Find(cameraList.get(), numCamsToFind, &num_cameras_found);
+	processReturnCode(returnError, "Finding Camera");
+	if (num_cameras_found == 0) {
+		std::cerr << "No cameras Available" << std::endl;
 		return 1;
 	}
 
-	camera = camera_list[0];
-	status = Seekware_Open(camera);
-	if (status != SW_RETCODE_NONE) {
-		fprintf(stderr, "Cannot open camera : %d\n", status);
-		goto cleanup;
-	}
+	std::unique_ptr<sw, decltype(&closeCamera)> camera(cameraList[0], &closeCamera);
 
-	// Must read firmware info AFTER the camera has been opened
+	returnError = Seekware_Open(camera.get());
+	processReturnCode(returnError, "Opening Camera", camera.get());
+
 	printf("::Camera Firmware Info::\n");
-	print_fw_info(camera);
+	print_fw_info(camera.get());
 
-	camera_pixels = (size_t)camera->frame_cols * (size_t)camera->frame_rows;
+	std::cout << "Camera row, cols: " << camera->frame_rows << ", " << 
+		camera->frame_cols << std::endl;
 
-	//Allocate buffers for holding thermal data
-	thermography_data = (float*)malloc(camera_pixels * sizeof(float));
-	if (thermography_data == NULL) {
-		fprintf(stderr, "Cannot allocate thermography buffer!\n");
-		goto cleanup;
-	}
+	int totalNumPixels = camera->frame_rows * camera->frame_cols;
 
-	filtered_data = (uint16_t*)malloc((camera_pixels + camera->frame_cols) * sizeof(uint16_t));
-	if (filtered_data == NULL) {
-		fprintf(stderr, "Cannot allocate filtered buffer!\n");
-		goto cleanup;
-	}
+	std::vector<float> thermographyData(totalNumPixels);
+	std::vector<unsigned short> filteredData(totalNumPixels);
 
-	Seekware_SetSettingEx(camera, SETTING_ENABLE_TIMESTAMP, &enable, sizeof(enable));
-	Seekware_SetSettingEx(camera, SETTING_RESET_TIMESTAMP, &enable, sizeof(enable));
-
-	start = wall_clock_s();
-
-	/* * * * * * * * * * * * * Data Capture Loop * * * * * * * * * * * * * * */
-
-	do {
-		status = Seekware_GetImageEx(camera, filtered_data, thermography_data, NULL);
-		if (status == SW_RETCODE_NOFRAME) {
-			printf("Seek Camera Timeout ...\n");
-		}
-		if (status == SW_RETCODE_DISCONNECTED) {
-			printf("Seek Camera Disconnected ...\n");
-		}
-		if (status != SW_RETCODE_NONE) {
-			printf("Seek Camera Error : %u ...\n", status);
-			break;
-		}
-
-		status = Seekware_GetSpot(camera, &spot, &min, &max);
-		if (status != SW_RETCODE_NONE) {
-			break;
-		}
-
-		++frame_count;
-
-		// Calculate the frame rate
-		stop = wall_clock_s();
-		frametime = stop - start;
-		framerate = (1 / frametime);
-		start = wall_clock_s();
-
-		//Writes every 10th thermography frame to a csv file.
-#if LOG_THERMOGRAPHY_DATA
-		if (frame_count % 10 == 0) {
-			FILE* log = fopen("thermography.csv", "w");
-			for (uint16_t i = 0; i < camera->frame_rows; ++i) {
-				for (uint16_t j = 0; j < camera->frame_cols; ++j) {
-					float value = thermography_data[(i * camera->frame_cols) + j];
-					float rounded_value = roundf(10.0f * value) / 10.0f;
-					fprintf(log, "%.1f,", rounded_value);
-				}
-				fputc('\n', log);
-			}
-			fclose(log);
-		}
-#endif
-		 // Extract telemetry data
-		 field_count = *(uint32_t*)&filtered_data[camera_pixels];
-		 timestamp_us = *(uint64_t*)& filtered_data[camera_pixels + 5];
-		 timestamp_s = (float)timestamp_us / 1.0e6f;
-
-	    //Update metrics on stdout
-        //On select cameras that do not support thermography, nan is returned for spot, min, and max
-		if (!exit_requested) {
-			if (frame_count > 1) {
-				static const int num_lines = 17;
-				for (int i = 0; i < num_lines; i++) {
-					printf("\033[A");
-				}
-			}
-			printf("\r\33[2K Frame Info:\n");
-			printf("\33[2K--------------------------\n");
-			printf("\33[2K frame_width:  %u\n",		 camera->frame_cols);
-			printf("\33[2K field_height: %u\n",		 camera->frame_rows);
-			printf("\33[2K frame_count:  %llu\n",	 frame_count);
-			printf("\33[2K field_count:  %u\n",		 field_count);
-			printf("\33[2K frame_rate:   %.1ffps\n", framerate);
-			printf("\33[2K timestamp:    %.6fs\n",	 timestamp_s);
-			printf("\33[2K--------------------------\n");
-
-			printf("\n\33[2K Temperature Info:\n");
-			printf("\33[2K--------------------------\n");
-			printf("\33[2K\33\33[2K\x1B[41m\x1B[37m max: %*.1fC \x1B[0m\n", 3, max);
-			printf("\33[2K\33\33[2K\x1B[42m\x1B[37m spot:%*.1fC \x1B[0m\n", 3, spot);
-			printf("\33[2K\33\33[2K\x1B[44m\x1B[37m min: %*.1fC \x1B[0m\n", 3, min);
-			printf("\33[2K--------------------------\n\n");
-
-			fflush(stdout);
-		}
-	} while (!exit_requested);
-
-/* * * * * * * * * * * * * Cleanup * * * * * * * * * * * * * * */
-cleanup:
-	
-	printf("Exiting...\n");
-
-	if (camera != NULL) {
-		Seekware_Close(camera);
-	}
-
-	if (thermography_data != NULL) {
-		free(thermography_data);
-	}
-
-	if (filtered_data != NULL){
-		free(filtered_data);
-	}
+	// Seekware_SetSettingEx(camera.get(), SETTING_ENABLE_TIMESTAMP, &enable, sizeof(enable));
+	// Seekware_SetSettingEx(camera.get(), SETTING_RESET_TIMESTAMP, &enable, sizeof(enable));
 
 	return 0;
 }
