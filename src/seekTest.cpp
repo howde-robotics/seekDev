@@ -38,6 +38,14 @@ static void signal_callback(int signum)
     exit_requested = true;
 }
 
+bool saveThisImage = false;
+void cbmouse(int event, int x, int y, int flags, void*userdata)
+{
+    if (event == cv::EVENT_LBUTTONDOWN)
+    {
+        saveThisImage = true;
+    }
+}
 
 int main(int argc, char * argv [])
 {
@@ -72,8 +80,8 @@ int main(int argc, char * argv [])
 	int totalNumPixels = camera->frame_rows * camera->frame_cols;
 
 	std::vector<float> thermographyData(totalNumPixels);
-	// std::vector<unsigned short> filteredData(totalNumPixels);
-	uint16_t* filteredData = (uint16_t*)malloc((totalNumPixels) * sizeof(uint16_t));
+	std::vector<unsigned short> filteredData(totalNumPixels);
+	// uint16_t* filteredData = (uint16_t*)malloc((totalNumPixels) * sizeof(uint16_t));
 	//extra row stores camera telemetry data 
 	std::vector<unsigned short> filteredWithTelemetryData(totalNumPixels + camera->frame_cols);
 
@@ -83,31 +91,48 @@ int main(int argc, char * argv [])
 	Seekware_SetSettingEx(camera.get(), SETTING_ENABLE_TIMESTAMP, &enable, sizeof(enable));
 	Seekware_SetSettingEx(camera.get(), SETTING_RESET_TIMESTAMP, &enable, sizeof(enable));
 
-	//Need to mix channels 
-	cv::Mat dispARGB(camera->frame_rows, camera->frame_cols,
+	Seekware_SetSetting(camera.get(), SETTING_ACTIVE_LUT, SW_LUT_IRON_NEW);
+
+	cv::Mat dispMatrix(camera->frame_rows, camera->frame_cols,
 				CV_8UC4, displayData.data());
+	
 
-	cv::Mat dispBGRA(camera->frame_rows, camera->frame_cols,
-				CV_8UC4);
-	int from_to[]={0,3, 1,2, 2,1, 3,0};
+	int frameCount = 0;
 
-	cv::mixChannels(&dispARGB, 1, &dispBGRA, 1,  from_to, 4);
+	//Seek claims data is returned ARGB... doesn't seem likely
+	//If thats the case, need to reactivate these lines and the 
+	//call to mixChannels below
+	// cv::Mat dispBGRA(camera->frame_rows, camera->frame_cols,
+	// 		CV_8UC4);
+	// int from_to[]={0,3, 1,2, 2,1, 3,0};
 
 	do {
-		returnError = Seekware_GetImage(camera.get(), 
-									filteredData, 
+		returnError = Seekware_GetImageEx(camera.get(), 
+									filteredWithTelemetryData.data(), 
 									thermographyData.data(), 
 									displayData.data());
 		processReturnCode(returnError, "Getting Image from Camera");
 
+		++frameCount;
 
-		cv::imshow("Display Window", dispARGB);
+
+		// cv::mixChannels(&dispMatrix, 1, &dispBGRA, 1,  from_to, 4);
+
+		cv::imshow("Display Window", dispMatrix);
+		cv::setMouseCallback("Display Window", cbmouse, NULL);
 		auto k = cvWaitKey(30);
-		
-		if (k == 1048608) {
+
+		//saveThisImage set by mosue click on window, easy remote pic taking
+		if (k == 1048608 || saveThisImage) {
 			//space bar pressed
-			
-			//TODO: Save test image here
+			std::cout << "Taking Image" << std::endl;
+			cv::Mat dst;
+			cv::cvtColor(dispMatrix, dst, cv::COLOR_BGRA2BGR);
+
+			std::ostringstream fnStream;
+			fnStream << "../testImages/" << frameCount << ".jpg";
+			cv::imwrite(fnStream.str(), dispMatrix);
+			saveThisImage = false;
 		}
 
 	} while(!exit_requested);
