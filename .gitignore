@@ -36,3 +36,7 @@ build/*
 #testing
 #1123#Vscode config
 .vscode/*
+
+
+#Seek test imagery
+testImages/*
