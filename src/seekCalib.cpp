@@ -1,14 +1,9 @@
 #include <string>
  
 #include <opencv2/opencv.hpp>
-#include <opencv2/calib3d.hpp>
 
 int main(int argc, char * argv []) {
 
-    std::cout << "OpenCV version : " << CV_VERSION << std::endl;
-    std::cout << "Major version : " << CV_MAJOR_VERSION << std::endl;
-    std::cout << "Minor version : " << CV_MINOR_VERSION << std::endl;
-    std::cout << "Subminor version : " << CV_SUBMINOR_VERSION << std::endl;
 
     std::string imageNamePattern("../calibImages/*.jpg");
     std::vector<cv::String> fns;
@@ -89,12 +84,15 @@ int main(int argc, char * argv []) {
     for (auto& img : calibImages) {
         // img = ~img;//un-negate
         int ind = &img - &calibImages.front();
-        // cv::drawFrameAxes(img, cameraMatrix,distCoeffs, rvecs[ind], tvecs[ind], .05);
+        cv::Mat dst;
+        cv::cvtColor(img, dst, cv::COLOR_GRAY2BGR);
 
+        cv::drawFrameAxes(dst, cameraMatrix,distCoeffs, rvecs[ind], tvecs[ind], .05);
 
-        cv::Mat dst(imgSize, img.depth());
-        cv::undistort(img, dst, cameraMatrix,distCoeffs, newCamMatrix);
-        cv::imshow("Testing", dst);
+        cv::Mat dst2(imgSize, dst.depth());
+
+        cv::undistort(dst, dst2, cameraMatrix,distCoeffs, newCamMatrix);
+        cv::imshow("Testing", dst2);
         cv::waitKey();
     }
     
