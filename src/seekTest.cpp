@@ -91,7 +91,7 @@ int main(int argc, char * argv [])
 	Seekware_SetSettingEx(camera.get(), SETTING_ENABLE_TIMESTAMP, &enable, sizeof(enable));
 	Seekware_SetSettingEx(camera.get(), SETTING_RESET_TIMESTAMP, &enable, sizeof(enable));
 
-	Seekware_SetSetting(camera.get(), SETTING_ACTIVE_LUT, SW_LUT_IRON_NEW);
+	Seekware_SetSetting(camera.get(), SETTING_ACTIVE_LUT, SW_LUT_WHITE_NEW);
 
 	cv::Mat dispMatrix(camera->frame_rows, camera->frame_cols,
 				CV_8UC4, displayData.data());
@@ -130,10 +130,10 @@ int main(int argc, char * argv [])
 			cv::cvtColor(dispMatrix, dst, cv::COLOR_BGRA2BGR);
 
 			std::ostringstream fnStream;
-			fnStream << "../testImages/" << frameCount << ".jpg";
+			fnStream << "../calibImages/calib2_" << frameCount << ".jpg";
 			cv::imwrite(fnStream.str(), dispMatrix);
 			saveThisImage = false;
-		}
+		} 
 
 	} while(!exit_requested);
 
