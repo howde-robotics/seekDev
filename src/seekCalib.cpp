@@ -1,7 +1,14 @@
 #include <string>
  
 #include <opencv2/opencv.hpp>
+#include <opencv2/calib3d.hpp>
+
 int main(int argc, char * argv []) {
+
+    std::cout << "OpenCV version : " << CV_VERSION << std::endl;
+    std::cout << "Major version : " << CV_MAJOR_VERSION << std::endl;
+    std::cout << "Minor version : " << CV_MINOR_VERSION << std::endl;
+    std::cout << "Subminor version : " << CV_SUBMINOR_VERSION << std::endl;
 
     std::string imageNamePattern("../calibImages/*.jpg");
     std::vector<cv::String> fns;
@@ -35,7 +42,7 @@ int main(int argc, char * argv []) {
         if(found) {
             std::cout << "Pattern found on image: " << fns[ind] << std::endl;
             cv::cornerSubPix(img, corners, cv::Size(11, 11), cv::Size(-1, -1),
-                cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+                cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.1));
             imagePoints.push_back(corners);
         } else {
             std::cout << "No pattern found on image: " << fns[ind] << std::endl;
@@ -81,6 +88,10 @@ int main(int argc, char * argv []) {
     cv::Mat newCamMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix,distCoeffs,imgSize,1,imgSize);
     for (auto& img : calibImages) {
         // img = ~img;//un-negate
+        int ind = &img - &calibImages.front();
+        // cv::drawFrameAxes(img, cameraMatrix,distCoeffs, rvecs[ind], tvecs[ind], .05);
+
+
         cv::Mat dst(imgSize, img.depth());
         cv::undistort(img, dst, cameraMatrix,distCoeffs, newCamMatrix);
         cv::imshow("Testing", dst);
