@@ -123,7 +123,7 @@ int main(int argc, char * argv []) {
         cv::Mat dst;
         cv::cvtColor(img, dst, cv::COLOR_GRAY2BGR);
 
-        cv::drawFrameAxes(dst, cameraMatrix,distCoeffs, rvecs[ind], tvecs[ind], .05);
+        cv::drawFrameAxes(dst, cameraMatrix,distCoeffs, rvecs[ind], tvecs[ind], 2 * squareSideLengthM);
 
         cv::Mat dst2(imgSize, dst.depth());
 
