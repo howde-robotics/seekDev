@@ -2,6 +2,9 @@
  
 #include <opencv2/opencv.hpp>
 
+/*
+ * Returns inverted images from a given filepath pattern
+ */
 std::pair<std::vector<cv::Mat>, std::vector<cv::String>>
 getImagesInverted(std::string imageNamePattern) {
     std::vector<cv::String> fns;
@@ -17,6 +20,10 @@ getImagesInverted(std::string imageNamePattern) {
     return {calibImages, fns};
 }
 
+/**
+ * Finds the interior corner points of a checkerboard calibration plate in a series
+ * of images
+ */
 std::vector<std::vector<cv::Point2f>>
 findImagePoints(std::vector<cv::Mat> calibImages, std::vector<cv::String> filenames, cv::Size boardSize) {
     std::vector<std::vector<cv::Point2f>> imagePoints;
@@ -44,6 +51,11 @@ findImagePoints(std::vector<cv::Mat> calibImages, std::vector<cv::String> filena
     return imagePoints;
 }
 
+/**
+ * Calculates the locations of the interior points of a checkerboard calibration
+ * pattern in the frame of the calibration pattern. (i.e. Z=0, all x, y lie along lines
+ * and are separated by squareSideLength)
+ */
 std::vector<std::vector<cv::Point3f> >
 determineObjectPoinsCheckerboard(cv::Size boardSize, double squareSideLengthM, int numCalImages) {
     std::vector<std::vector<cv::Point3f> > objectPoints(1);
@@ -57,11 +69,6 @@ determineObjectPoinsCheckerboard(cv::Size boardSize, double squareSideLengthM, i
     //duplicate to correct length so it matches imagePoints length
     objectPoints.resize(numCalImages, objectPoints[0]);
     return objectPoints;
-}
-
-void
-displayUndistortedWithAxes() {
-    
 }
 
 int main(int argc, char * argv []) {
@@ -124,5 +131,7 @@ int main(int argc, char * argv []) {
         cv::imshow("Axis on undistorted Image", dst2);
         cv::waitKey();
     }
+
+    //TODO: Save the calibration parameters to a XML or YAML file
     return 0;
 }
