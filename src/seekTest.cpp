@@ -7,6 +7,7 @@
 #include <string>
 #include <iostream>
 #include <limits>
+#include <bitset>
 
 #include <seekware.h>
 #include <opencv2/opencv.hpp>
@@ -71,6 +72,10 @@ int main(int argc, char * argv [])
 
 	std::unique_ptr<sw, decltype(&closeCamera)> camera(cameraList[0], &closeCamera);
 
+	//Stop camera first, in case failed close last time
+	returnError = Seekware_Stop(camera.get());
+	processReturnCode(returnError, "Opening Camera");
+
 	returnError = Seekware_Open(camera.get());
 	processReturnCode(returnError, "Opening Camera");
 
@@ -96,15 +101,13 @@ int main(int argc, char * argv [])
 	cv::Mat dispMatrix(camera->frame_rows, camera->frame_cols,
 				CV_8UC4, displayData.data());
 	
-
 	int frameCount = 0;
 
-	//Seek claims data is returned ARGB... doesn't seem likely
-	//If thats the case, need to reactivate these lines and the 
-	//call to mixChannels below
-	// cv::Mat dispBGRA(camera->frame_rows, camera->frame_cols,
-	// 		CV_8UC4);
-	// int from_to[]={0,3, 1,2, 2,1, 3,0};
+	//Data is returned ARGB8888 little endian, so this can be 
+	//put directly into a cv::Mat<8UC4> even though that deault 
+	//type is BGRA32. They appear to be different data types but
+	//are actually the same. Alpha channel is fully saturated on
+	//native Seek returns, only used for Custom LUTs
 
 	do {
 		returnError = Seekware_GetImageEx(camera.get(), 
@@ -115,22 +118,18 @@ int main(int argc, char * argv [])
 
 		++frameCount;
 
-
-		// cv::mixChannels(&dispMatrix, 1, &dispBGRA, 1,  from_to, 4);
-
 		cv::imshow("Display Window", dispMatrix);
 		cv::setMouseCallback("Display Window", cbmouse, NULL);
-		auto k = cvWaitKey(30);
+		auto k = cv::waitKey(30);
 
 		//saveThisImage set by mosue click on window, easy remote pic taking
 		if (k == 1048608 || saveThisImage) {
 			//space bar pressed
 			std::cout << "Taking Image" << std::endl;
 			cv::Mat dst;
-			cv::cvtColor(dispMatrix, dst, cv::COLOR_BGRA2BGR);
-
+			cv::cvtColor(dispMatrix, dst, cv::COLOR_BGRA2GRAY);
 			std::ostringstream fnStream;
-			fnStream << "../calibImages/calib2_" << frameCount << ".jpg";
+			fnStream << "../testImages/mask_test" << frameCount << ".jpg";
 			cv::imwrite(fnStream.str(), dispMatrix);
 			saveThisImage = false;
 		} 
