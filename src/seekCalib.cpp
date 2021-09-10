@@ -115,22 +115,29 @@ int main(int argc, char * argv []) {
     double rms = cv::calibrateCamera(objectPoints, imagePoints, imgSize, cameraMatrix,
                             distCoeffs, rvecs, tvecs, stdDevIntrinsics, stdDevExtrinsics, perViewError);    
 
-    //Matrix to undistort images with the determined intrinsics
-    cv::Mat newCamMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix,distCoeffs,imgSize,1,imgSize);
-    for (auto& img : calibImages) {
-        // img = ~img;//un-negate
-        int ind = &img - &calibImages.front();
-        cv::Mat dst;
-        cv::cvtColor(img, dst, cv::COLOR_GRAY2BGR);
+    std::cout << "Camera Matrix: " << std::endl << cameraMatrix;
 
-        cv::drawFrameAxes(dst, cameraMatrix,distCoeffs, rvecs[ind], tvecs[ind], 2 * squareSideLengthM);
+    //Save camera matrix
+    cv::FileStorage file("IR_cameraMatrix.xml", cv::FileStorage::WRITE);
+    file << "IR_cameraMatrix" <<  cameraMatrix;
+    file << "IR_distortionCoeffs" << distCoeffs;
 
-        cv::Mat dst2(imgSize, dst.depth());
+    // //Matrix to undistort images with the determined intrinsics
+    // cv::Mat newCamMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix,distCoeffs,imgSize,1,imgSize);
+    // for (auto& img : calibImages) {
+    //     // img = ~img;//un-negate
+    //     int ind = &img - &calibImages.front();
+    //     cv::Mat dst;
+    //     cv::cvtColor(img, dst, cv::COLOR_GRAY2BGR);
 
-        cv::undistort(dst, dst2, cameraMatrix,distCoeffs, newCamMatrix);
-        cv::imshow("Axis on undistorted Image", dst2);
-        cv::waitKey();
-    }
+    //     cv::drawFrameAxes(dst, cameraMatrix,distCoeffs, rvecs[ind], tvecs[ind], 2 * squareSideLengthM);
+
+    //     cv::Mat dst2(imgSize, dst.depth());
+
+    //     cv::undistort(dst, dst2, cameraMatrix,distCoeffs, newCamMatrix);
+    //     cv::imshow("Axis on undistorted Image", dst2);
+    //     cv::waitKey();
+    // }
 
     //TODO: Save the calibration parameters to a XML or YAML file
     return 0;

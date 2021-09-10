@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<IR_cameraMatrix type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>3</cols>
+  <dt>d</dt>
+  <data>
+    3.3092071512439185e+02 0. 1.6001014057027311e+02 0.
+    3.3213288273601660e+02 1.1921412901927177e+02 0. 0. 1.</data></IR_cameraMatrix>
+<IR_distortionCoeffs type_id="opencv-matrix">
+  <rows>5</rows>
+  <cols>1</cols>
+  <dt>d</dt>
+  <data>
+    -2.3860417160339289e-01 -1.0059872606293430e+00
+    -1.2342103021496931e-02 -6.4050866560307817e-03
+    2.6056479258743481e+00</data></IR_distortionCoeffs>
+</opencv_storage>
